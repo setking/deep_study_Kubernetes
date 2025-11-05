@@ -1,6 +1,8 @@
 ### 深入剖析Kubernetes
 本地阅读html格式的电子书
 
+如果需要看别的电子书，只要替换`deep_study_Kubernetes/public/resource/html`里面的html文件然后刷新页面就行了
+
 使用vue3+go渲染到页面 ，go占用8089端口，vue占用3333端口
 
 #### 启动方式
