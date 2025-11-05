@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import hashlib
 import mimetypes
+import shutil
 
 
 def download_image(img_url, img_folder, base_url):
@@ -50,14 +51,20 @@ def download_image(img_url, img_folder, base_url):
         return None
 
 
-def process_html(html_file, output_file=None, img_folder='img'):
+def process_html(html_file, img_folder='img', replace_original=True):
     """
     处理HTML文件,下载图片并替换路径
+
+    参数:
+        html_file: HTML文件路径
+        img_folder: 图片保存文件夹名称
+        replace_original: 是否直接替换源文件(True)或创建新文件(False)
     """
     # 创建图片文件夹
     if not os.path.exists(img_folder):
         os.makedirs(img_folder)
         print(f"创建文件夹: {img_folder}")
+
 
     # 读取HTML文件
     with open(html_file, 'r', encoding='utf-8') as f:
@@ -107,24 +114,29 @@ def process_html(html_file, output_file=None, img_folder='img'):
             style.string = original
 
     # 保存修改后的HTML
-    if output_file is None:
+    if replace_original:
+        output_file = html_file
+    else:
         output_file = html_file.replace('.html', '_modified.html')
 
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(str(soup))
 
     print(f"\n完成! 成功下载 {downloaded_count} 张图片")
-    print(f"修改后的HTML已保存到: {output_file}")
+    if replace_original:
+        print(f"✓ 源文件已更新: {output_file}")
+    else:
+        print(f"修改后的HTML已保存到: {output_file}")
 
 
-def batch_process_html(folder_path, img_folder='img', output_suffix='_modified', recursive=False):
+def batch_process_html(folder_path, img_folder='img', replace_original=True, recursive=False):
     """
     批量处理文件夹中的所有HTML文件
 
     参数:
         folder_path: 包含HTML文件的文件夹路径
         img_folder: 图片保存文件夹名称
-        output_suffix: 输出文件的后缀
+        replace_original: 是否直接替换源文件
         recursive: 是否递归处理子文件夹
     """
     import glob
@@ -139,6 +151,9 @@ def batch_process_html(folder_path, img_folder='img', output_suffix='_modified',
         html_files = glob.glob(pattern)
         html_files += glob.glob(os.path.join(folder_path, '*.htm'))
 
+    # 过滤掉备份文件
+    html_files = [f for f in html_files if not f.endswith('.backup')]
+
     if not html_files:
         print(f"在 '{folder_path}' 中没有找到HTML文件")
         return
@@ -152,15 +167,11 @@ def batch_process_html(folder_path, img_folder='img', output_suffix='_modified',
         print("-" * 60)
 
         try:
-            # 生成输出文件名
-            base_name = os.path.splitext(html_file)[0]
-            output_file = f"{base_name}{output_suffix}.html"
-
             # 为每个HTML文件创建独立的图片文件夹(可选)
             # 或者使用统一的图片文件夹
             file_img_folder = os.path.join(os.path.dirname(html_file), img_folder)
 
-            process_html(html_file, output_file, file_img_folder)
+            process_html(html_file, file_img_folder, replace_original)
             success_count += 1
         except Exception as e:
             print(f"✗ 处理失败: {str(e)}")
@@ -172,45 +183,52 @@ def batch_process_html(folder_path, img_folder='img', output_suffix='_modified',
 if __name__ == "__main__":
     import sys
 
-    print("HTML图片下载器 - 支持单文件和批量处理\n")
+    print("HTML图片下载器 - 直接替换源文件版本\n")
 
     # 使用示例
     if len(sys.argv) > 1:
         path = sys.argv[1]
 
+        # 检查是否使用--no-replace参数(保留旧版本行为)
+        replace_original = '--no-replace' not in sys.argv
+
         # 判断是文件还是文件夹
         if os.path.isfile(path):
             # 单文件处理
             html_file = path
-            output_file = sys.argv[2] if len(sys.argv) > 2 else None
-            img_folder = sys.argv[3] if len(sys.argv) > 3 else 'img'
+            img_folder = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else 'img'
 
-            print("模式: 单文件处理\n")
-            process_html(html_file, output_file, img_folder)
+            print("模式: 单文件处理")
+            print(f"替换源文件: {'是' if replace_original else '否'}\n")
+            process_html(html_file, img_folder, replace_original)
 
         elif os.path.isdir(path):
             # 批量处理
             folder_path = path
-            img_folder = sys.argv[2] if len(sys.argv) > 2 else 'img'
-            output_suffix = sys.argv[3] if len(sys.argv) > 3 else '_modified'
+            img_folder = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else 'img'
             recursive = '--recursive' in sys.argv or '-r' in sys.argv
 
             print("模式: 批量处理")
+            print(f"替换源文件: {'是' if replace_original else '否'}")
             print(f"递归处理: {'是' if recursive else '否'}\n")
-            batch_process_html(folder_path, img_folder, output_suffix, recursive)
+            batch_process_html(folder_path, img_folder, replace_original, recursive)
         else:
             print(f"错误: '{path}' 不是有效的文件或文件夹")
             sys.exit(1)
     else:
         # 默认参数 - 处理当前目录
         print("未指定参数,处理当前目录下的所有HTML文件\n")
-        batch_process_html('.', 'img', '_modified', False)
+        batch_process_html('.', 'img', True, False)
 
     print("\n使用方法:")
-    print("  单文件: python script.py <html文件> [输出文件] [图片文件夹]")
-    print("  批量:   python script.py <文件夹> [图片文件夹] [输出后缀] [-r]")
+    print("  单文件: python script.py <html文件> [图片文件夹] [--no-replace]")
+    print("  批量:   python script.py <文件夹> [图片文件夹] [-r] [--no-replace]")
+    print("\n参数说明:")
+    print("  --no-replace  创建新文件而不是替换源文件")
+    print("  -r, --recursive  递归处理子文件夹")
     print("\n示例:")
-    print("  python script.py index.html")
-    print("  python script.py ./html_files")
-    print("  python script.py ./html_files images _new")
-    print("  python script.py ./html_files img _modified -r  # 递归处理子文件夹")
+    print("  python script.py index.html                    # 直接替换源文件")
+    print("  python script.py index.html --no-replace       # 创建新文件")
+    print("  python script.py ./html_files                  # 批量替换")
+    print("  python script.py ./html_files images -r        # 递归批量替换")
+    print("  python script.py ./html_files --no-replace     # 批量处理但不替换")
